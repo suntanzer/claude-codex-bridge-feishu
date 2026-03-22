@@ -21,15 +21,95 @@ function normalizeVerdict(raw) {
   return '';
 }
 
-function parseApiKeys() {
-  const keys = [];
-  const single = String(process.env.BRIDGE_CLAUDE_GEMINI_API_KEY || '').trim();
-  if (single) keys.push(single);
-  for (const raw of String(process.env.BRIDGE_CLAUDE_GEMINI_API_KEYS || '').split(',')) {
-    const value = raw.trim();
-    if (value) keys.push(value);
+function normalizeBaseUrl(raw, fallback = DEFAULT_BASE_URL) {
+  const value = String(raw || fallback || '').trim().replace(/\/+$/, '');
+  return value || fallback;
+}
+
+function splitCommaSeparated(raw) {
+  return String(raw || '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function uniqueNonEmpty(values) {
+  return [...new Set(values.map((value) => String(value || '').trim()).filter(Boolean))];
+}
+
+function uniqueTargets(targets) {
+  const seen = new Set();
+  const ordered = [];
+  for (const target of targets) {
+    const signature = `${target.model}\u0000${target.baseUrl}\u0000${target.apiKey}`;
+    if (seen.has(signature)) continue;
+    seen.add(signature);
+    ordered.push(target);
   }
-  return [...new Set(keys)];
+  return ordered;
+}
+
+function parseLegacyApiKeys(env = process.env) {
+  const keys = [];
+  const single = String(env.BRIDGE_CLAUDE_GEMINI_API_KEY || '').trim();
+  if (single) keys.push(single);
+  for (const value of splitCommaSeparated(env.BRIDGE_CLAUDE_GEMINI_API_KEYS || '')) {
+    keys.push(value);
+  }
+  return uniqueNonEmpty(keys);
+}
+
+function buildTarget(rawTarget, { fallbackBaseUrl, fallbackModel } = {}) {
+  const model = String(rawTarget?.model || fallbackModel || '').trim();
+  const baseUrl = normalizeBaseUrl(rawTarget?.baseUrl, fallbackBaseUrl || DEFAULT_BASE_URL);
+  const apiKey = String(rawTarget?.apiKey || '').trim();
+  if (!model || !baseUrl || !apiKey) {
+    return null;
+  }
+  return {
+    model,
+    baseUrl,
+    apiKey,
+  };
+}
+
+function parseTargetsJson(raw, defaults) {
+  const value = String(raw || '').trim();
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+    return uniqueTargets(parsed
+      .map((target) => buildTarget(target, defaults))
+      .filter(Boolean));
+  } catch {
+    return [];
+  }
+}
+
+export function parseGeminiReadonlyTargets(env = process.env) {
+  const defaults = {
+    fallbackBaseUrl: normalizeBaseUrl(env.BRIDGE_CLAUDE_GEMINI_BASE_URL, DEFAULT_BASE_URL),
+    fallbackModel: String(env.BRIDGE_CLAUDE_GEMINI_MODEL || DEFAULT_MODEL).trim() || DEFAULT_MODEL,
+  };
+  const configuredTargets = parseTargetsJson(env.BRIDGE_CLAUDE_GEMINI_TARGETS, defaults);
+  if (configuredTargets.length > 0) {
+    return configuredTargets;
+  }
+  const legacyApiKeys = parseLegacyApiKeys(env);
+  if (legacyApiKeys.length === 0) {
+    return [];
+  }
+  return uniqueTargets(legacyApiKeys
+    .map((apiKey) => buildTarget(
+      {
+        model: defaults.fallbackModel,
+        baseUrl: defaults.fallbackBaseUrl,
+        apiKey,
+      },
+      defaults,
+    ))
+    .filter(Boolean));
 }
 
 function extractResponseText(payload) {
@@ -76,19 +156,17 @@ function buildPrompt(command) {
 }
 
 export class GeminiReadonlyClassifier {
-  constructor({ logger } = {}) {
+  constructor({ logger, env = process.env } = {}) {
     this.logger = logger;
-    this.enabled = process.env.BRIDGE_CLAUDE_GEMINI_READONLY_ENABLED === 'true';
-    this.apiKeys = parseApiKeys();
-    this.baseUrl = String(process.env.BRIDGE_CLAUDE_GEMINI_BASE_URL || DEFAULT_BASE_URL).trim().replace(/\/+$/, '');
-    this.model = String(process.env.BRIDGE_CLAUDE_GEMINI_MODEL || DEFAULT_MODEL).trim();
-    this.threshold = parsePositiveInt(process.env.BRIDGE_CLAUDE_GEMINI_READONLY_THRESHOLD, DEFAULT_THRESHOLD);
-    this.timeoutMs = parsePositiveInt(process.env.BRIDGE_CLAUDE_GEMINI_TIMEOUT_MS, DEFAULT_TIMEOUT_MS);
-    this.keyCursor = 0;
+    this.enabled = env.BRIDGE_CLAUDE_GEMINI_READONLY_ENABLED === 'true';
+    this.targets = parseGeminiReadonlyTargets(env);
+    this.threshold = parsePositiveInt(env.BRIDGE_CLAUDE_GEMINI_READONLY_THRESHOLD, DEFAULT_THRESHOLD);
+    this.timeoutMs = parsePositiveInt(env.BRIDGE_CLAUDE_GEMINI_TIMEOUT_MS, DEFAULT_TIMEOUT_MS);
+    this.targetCursor = 0;
   }
 
   isEnabled() {
-    return this.enabled && this.apiKeys.length > 0 && Boolean(this.baseUrl) && Boolean(this.model);
+    return this.enabled && this.targets.length > 0;
   }
 
   shouldAutoAllow(result) {
@@ -97,26 +175,33 @@ export class GeminiReadonlyClassifier {
       && result.readonlyProbability >= this.threshold;
   }
 
-  nextApiKeys() {
-    if (this.apiKeys.length === 0) return [];
-    const start = this.keyCursor % this.apiKeys.length;
-    this.keyCursor = (this.keyCursor + 1) % this.apiKeys.length;
+  nextCandidates() {
+    if (this.targets.length === 0) return [];
+    const start = this.targetCursor % this.targets.length;
+    this.targetCursor = (this.targetCursor + 1) % this.targets.length;
     const ordered = [];
-    for (let offset = 0; offset < this.apiKeys.length; offset += 1) {
+    for (let offset = 0; offset < this.targets.length; offset += 1) {
+      const index = (start + offset) % this.targets.length;
       ordered.push({
-        apiKey: this.apiKeys[(start + offset) % this.apiKeys.length],
-        index: start + offset,
+        target: this.targets[index],
+        targetIndex: index,
+        targetTotal: this.targets.length,
       });
     }
     return ordered;
   }
 
-  async classifyWithKey(command, { apiKey, index, total }) {
+  async classifyWithCandidate(command, {
+    target,
+    targetIndex,
+    targetTotal,
+  }) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    const logPrefix = `gemini readonly classifier model=${target.model} target=${(targetIndex % targetTotal) + 1}/${targetTotal}`;
     try {
       const response = await fetch(
-        `${this.baseUrl}/models/${encodeURIComponent(this.model)}:generateContent?key=${encodeURIComponent(apiKey)}`,
+        `${target.baseUrl}/models/${encodeURIComponent(target.model)}:generateContent?key=${encodeURIComponent(target.apiKey)}`,
         {
           method: 'POST',
           headers: {
@@ -135,9 +220,7 @@ export class GeminiReadonlyClassifier {
 
       if (!response.ok) {
         const body = await response.text();
-        this.logger?.warn?.(
-          `gemini readonly classifier key=${(index % total) + 1}/${total} http=${response.status} body=${body.slice(0, 300)}`,
-        );
+        this.logger?.warn?.(`${logPrefix} http=${response.status} body=${body.slice(0, 300)}`);
         return null;
       }
 
@@ -145,14 +228,12 @@ export class GeminiReadonlyClassifier {
       const text = extractResponseText(payload);
       const parsed = parseClassification(text);
       if (!parsed) {
-        this.logger?.warn?.(
-          `gemini readonly classifier key=${(index % total) + 1}/${total} invalid payload=${text.slice(0, 300)}`,
-        );
+        this.logger?.warn?.(`${logPrefix} invalid payload=${text.slice(0, 300)}`);
         return null;
       }
       return parsed;
     } catch (error) {
-      this.logger?.warn?.(`gemini readonly classifier key=${(index % total) + 1}/${total} failed: ${String(error)}`);
+      this.logger?.warn?.(`${logPrefix} failed: ${String(error)}`);
       return null;
     } finally {
       clearTimeout(timeout);
@@ -163,12 +244,9 @@ export class GeminiReadonlyClassifier {
     if (!this.isEnabled()) {
       return null;
     }
-    const keys = this.nextApiKeys();
-    for (const candidate of keys) {
-      const result = await this.classifyWithKey(command, {
-        ...candidate,
-        total: this.apiKeys.length,
-      });
+    const candidates = this.nextCandidates();
+    for (const candidate of candidates) {
+      const result = await this.classifyWithCandidate(command, candidate);
       if (result) {
         return result;
       }
