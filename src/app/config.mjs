@@ -150,6 +150,10 @@ export async function loadConfig() {
     typingIntervalMs: parsePositiveInt(process.env.BRIDGE_TYPING_INTERVAL_SECS, 3) * 1000,
     progressMessageMs: parsePositiveInt(process.env.BRIDGE_PROGRESS_MESSAGE_SECS, 300) * 1000,
     requestRetainDays: parsePositiveInt(process.env.BRIDGE_REQUEST_RETAIN_DAYS, 7),
+    inboundFileMaxCount: parsePositiveInt(process.env.BRIDGE_INBOUND_FILE_MAX_COUNT, 5),
+    inboundFileMaxBytes: parsePositiveInt(process.env.BRIDGE_INBOUND_FILE_MAX_BYTES, 8 * 1024 * 1024),
+    inboundInlineTextBytes: parsePositiveInt(process.env.BRIDGE_INBOUND_INLINE_TEXT_BYTES, 32 * 1024),
+
     storeFile: join(dataDir, 'store.json'),
   };
 

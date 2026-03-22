@@ -15,6 +15,7 @@ import { createRunner, runnerLabel } from '../runner/factory.mjs';
 import { createOpsHandler } from '../ops/handler.mjs';
 import { chunkText } from '../util/text.mjs';
 import { buildApprovalCard, buildMarkdownReplyCard, shouldUseMarkdownCard } from '../transport/feishu-cards.mjs';
+import { createInboundPromptBuilder } from './inbound-files.mjs';
 
 async function main() {
   await loadInstanceEnv();
@@ -259,6 +260,12 @@ async function main() {
     });
   }
 
+  const buildIncomingPrompt = createInboundPromptBuilder({
+    config,
+    feishu,
+    logger: logger.child('inbound'),
+  });
+
   const onEvent = createFeishuEventHandler({
     config,
     store,
@@ -268,6 +275,7 @@ async function main() {
     handleCommand,
     enqueueRequest,
     postMessage,
+    buildIncomingPrompt,
   });
 
   startFeishuWebhookServer({

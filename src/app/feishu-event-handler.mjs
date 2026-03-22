@@ -1,6 +1,7 @@
 import { approvalDecisionLabel, normalizeApprovalDecision } from '../approval/decisions.mjs';
 import {
   extractFeishuTextContent,
+  extractFeishuMediaRefs,
   extractFeishuThreadContext,
   isFeishuGroupMentionEvent,
 } from '../transport/feishu-routing.mjs';
@@ -24,6 +25,7 @@ export function createFeishuEventHandler({
   handleCommand,
   enqueueRequest,
   postMessage,
+  buildIncomingPrompt,
 }) {
   function extractCardActionValue(event) {
     const action = event?.action || {};
@@ -51,7 +53,8 @@ export function createFeishuEventHandler({
     const message = event?.message || {};
     const sourceMessageId = String(message?.message_id || '').trim();
     const text = extractFeishuTextContent(message);
-    if (!text) return;
+    const mediaRefs = extractFeishuMediaRefs(message);
+    if (!text && mediaRefs.length === 0) return;
 
     const { chatId, chatType, replyRootId, threadKey, approvalScopeKey } = extractFeishuThreadContext(event);
     if (!chatId) return;
@@ -113,13 +116,17 @@ export function createFeishuEventHandler({
       updatedAt: Date.now(),
     });
 
+    const prompt = buildIncomingPrompt
+      ? await buildIncomingPrompt({ messageId: sourceMessageId, mediaRefs, message: text })
+      : text;
+
     await enqueueRequest({
       threadKey,
       approvalScopeKey,
       channelId: chatId,
       rootId: replyRootId,
       sourceMessageId,
-      prompt: text,
+      prompt,
       userId: senderOpenId,
     });
   }

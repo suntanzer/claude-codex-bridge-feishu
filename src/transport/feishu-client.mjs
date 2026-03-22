@@ -200,4 +200,32 @@ export class FeishuClient {
       method: 'DELETE',
     });
   }
+
+  async downloadResource({ messageId, fileKey, type = 'file', maxBytes = 0 }) {
+    const token = await this.getTenantAccessToken();
+    const url = `${this.baseUrl}/open-apis/im/v1/messages/${messageId}/resources/${fileKey}?type=${type}`;
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new Error(`Feishu resource download failed: HTTP ${response.status} ${text.slice(0, 300)}`);
+    }
+    const contentType = String(response.headers.get('content-type') || '').split(';')[0].trim();
+    const disposition = String(response.headers.get('content-disposition') || '');
+    let fileName = '';
+    const filenameMatch = disposition.match(/filename\*?=(?:UTF-8''|"?)([^";]+)/i);
+    if (filenameMatch) {
+      try {
+        fileName = decodeURIComponent(filenameMatch[1].replace(/^"/, '').replace(/"$/, ''));
+      } catch {
+        fileName = filenameMatch[1].replace(/^"/, '').replace(/"$/, '');
+      }
+    }
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (maxBytes > 0 && buffer.length > maxBytes) {
+      throw new Error(`File exceeds size limit: ${buffer.length} > ${maxBytes} bytes`);
+    }
+    return { buffer, contentType, fileName, size: buffer.length };
+  }
 }
