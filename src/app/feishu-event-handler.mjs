@@ -185,8 +185,10 @@ export function createFeishuEventHandler({
     ).trim();
     if (!openId) return;
 
-    const userPost = async (_channelId, _rootId, text) => {
-      const msg = String(text ?? '').trim();
+    const userPost = async (_channelId, _rootId, message) => {
+      const msg = (message && typeof message === 'object' && message.markdown)
+        ? String(message.markdown).trim()
+        : String(message ?? '').trim();
       if (msg) {
         await feishu.sendPostMessageToUser({ openId, text: msg });
       }
