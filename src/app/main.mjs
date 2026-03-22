@@ -279,16 +279,9 @@ async function main() {
     feishu,
   });
 
-  try {
-    await feishu.setBotMenu([
-      { event_key: 'status', name: { zh_cn: 'Status', en_us: 'Status' } },
-      { event_key: 'cancel', name: { zh_cn: 'Cancel', en_us: 'Cancel' } },
-      { event_key: 'doctor', name: { zh_cn: 'Doctor', en_us: 'Doctor' } },
-    ]);
-    logger.info('bot menu registered (status, cancel, doctor)');
-  } catch (err) {
-    logger.warn(`failed to register bot menu: ${String(err?.message || err)}`);
-  }
+  // Bot menu items (status, cancel, doctor) must be configured manually
+  // in the Feishu developer console.  Menu click events are dispatched
+  // as application.bot.menu_v6 and handled by onBotMenuEvent above.
 
   startFeishuWebhookServer({
     logger: logger.child('webhook'),

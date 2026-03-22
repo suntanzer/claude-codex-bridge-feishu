@@ -223,13 +223,6 @@ export class FeishuClient {
     });
   }
 
-  async setBotMenu(menuList) {
-    return this.request('/open-apis/bot/v3/bot_menu', {
-      method: 'POST',
-      body: JSON.stringify({ menu_list: menuList }),
-    });
-  }
-
   async downloadResource({ messageId, fileKey, type = 'file', maxBytes = 0 }) {
     const token = await this.getTenantAccessToken();
     const url = `${this.baseUrl}/open-apis/im/v1/messages/${messageId}/resources/${fileKey}?type=${type}`;
