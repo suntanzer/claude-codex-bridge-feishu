@@ -124,7 +124,7 @@ export class CodexRunner extends RunnerAdapter {
       if (agentText) {
         finalText = agentText;
       }
-      callbacks.onEvent?.(event, { sessionId, finalText });
+      try { callbacks.onEvent?.(event, { sessionId, finalText }); } catch {}
     });
 
     const stderrReader = readline.createInterface({ input: child.stderr });

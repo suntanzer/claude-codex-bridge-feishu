@@ -122,13 +122,17 @@ export function createRequestExecutor({
     });
   }
 
+  let runnerBusy = false;
+
   async function runNextRequest() {
-    if (getActiveRequest()) {
+    if (getActiveRequest() || runnerBusy) {
       return;
     }
+    runnerBusy = true;
     const next = queue.dequeue(runnerKey);
     await syncRuntime();
     if (!next) {
+      runnerBusy = false;
       return;
     }
 
@@ -320,6 +324,7 @@ export function createRequestExecutor({
       clearInterval(typingLoop);
       await clearTyping(next.requestId);
       setActiveRequest(null);
+      runnerBusy = false;
       await syncRuntime();
       setImmediate(() => {
         void runNextRequest();

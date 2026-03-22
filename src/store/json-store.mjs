@@ -41,12 +41,17 @@ export class JsonStore {
   }
 
   async save() {
-    this._saveChain = this._saveChain.then(async () => {
+    this._saveChain = this._saveChain.catch(() => {}).then(async () => {
       const payload = JSON.stringify(this.state, null, 2);
       await mkdir(dirname(this.filePath), { recursive: true });
       const tmpPath = `${this.filePath}.${newId()}.tmp`;
-      await writeFile(tmpPath, payload, 'utf8');
-      await rename(tmpPath, this.filePath);
+      try {
+        await writeFile(tmpPath, payload, 'utf8');
+        await rename(tmpPath, this.filePath);
+      } catch (error) {
+        try { const { unlink } = await import('node:fs/promises'); await unlink(tmpPath); } catch {}
+        throw error;
+      }
     });
     return this._saveChain;
   }

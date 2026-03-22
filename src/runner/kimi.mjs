@@ -521,11 +521,15 @@ export class KimiRunner extends RunnerAdapter {
   }
 
   async cancel() {
-    if (!this.currentChild || !this.currentRun) return false;
+    const child = this.currentChild;
+    const run = this.currentRun;
+    if (!child || !run) return false;
     this.cancelRequested = true;
-    this._requestCancel(this.currentRun);
+    this._requestCancel(run);
     setTimeout(() => {
-      try { this.currentChild?.kill('SIGTERM'); } catch {}
+      if (this.currentChild === child) {
+        try { child.kill('SIGTERM'); } catch {}
+      }
     }, 3000);
     return true;
   }

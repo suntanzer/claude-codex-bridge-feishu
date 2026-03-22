@@ -167,7 +167,7 @@ export class ClaudeSdkRunner extends RunnerAdapter {
           }
           return {
             behavior: 'deny',
-            message: 'Permission request rejected in Mattermost.',
+            message: 'Permission request rejected.',
           };
         },
       },
@@ -187,7 +187,7 @@ export class ClaudeSdkRunner extends RunnerAdapter {
 
     try {
       for await (const message of stream) {
-        callbacks.onEvent?.(message, { sessionId, finalText, waitingApproval });
+        try { await callbacks.onEvent?.(message, { sessionId, finalText, waitingApproval }); } catch {}
         if (message?.type === 'result') {
           finalText = message.result || finalText;
           sessionId = message.session_id || sessionId;

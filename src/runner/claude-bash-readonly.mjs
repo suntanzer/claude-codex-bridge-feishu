@@ -14,6 +14,8 @@ const BLOCKED_PATTERNS = [
   /`[^`]*`/,
   /<<[-~]?['"]?[A-Za-z_][A-Za-z0-9_]*['"]?/,
   /\b(?:bash|sh|zsh)\b\s+-[cC]\b/,
+  /\bfind\b(?:(?!\n).)*(?:\s-(?:exec|execdir|delete|ok|okdir)\b)/i,
+  />\s*\(/,
 ];
 
 const ALLOWED_SEGMENT_PATTERNS = [

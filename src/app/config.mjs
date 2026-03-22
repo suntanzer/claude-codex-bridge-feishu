@@ -147,6 +147,7 @@ export async function loadConfig() {
       (process.env.BRIDGE_HEARTBEAT_INTERVAL_SECS
         ? parsePositiveInt(process.env.BRIDGE_HEARTBEAT_INTERVAL_SECS, 30) * 1000
         : parsePositiveInt(process.env.BRIDGE_HEARTBEAT_INTERVAL_MINS, 5) * 60_000),
+    typingIntervalMs: parsePositiveInt(process.env.BRIDGE_TYPING_INTERVAL_SECS, 3) * 1000,
     progressMessageMs: parsePositiveInt(process.env.BRIDGE_PROGRESS_MESSAGE_SECS, 300) * 1000,
     requestRetainDays: parsePositiveInt(process.env.BRIDGE_REQUEST_RETAIN_DAYS, 7),
     storeFile: join(dataDir, 'store.json'),
