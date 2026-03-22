@@ -16,7 +16,7 @@ export function makeGroupRootThreadKey(chatId, rootMessageId) {
 }
 
 export function extractFeishuTextContent(message) {
-  const msgType = String(message?.msg_type || '').trim();
+  const msgType = String(message?.message_type || '').trim();
   const content = asJson(message?.content);
 
   if (msgType === 'text') {
@@ -52,7 +52,7 @@ export function extractFeishuTextContent(message) {
 }
 
 export function extractFeishuMediaRefs(message) {
-  const msgType = String(message?.msg_type || '').trim();
+  const msgType = String(message?.message_type || '').trim();
   const content = asJson(message?.content);
   const refs = [];
 
