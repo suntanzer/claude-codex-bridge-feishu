@@ -1,8 +1,15 @@
 {
   "name": "claude-codex-bridge-feishu",
   "version": "0.1.0",
+  "private": true,
   "type": "module",
   "description": "Feishu bridge control plane for Claude, Codex, and compatible CLI/SDK runners",
+  "license": "MIT",
+  "author": "suntanzer",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/suntanzer/claude-codex-bridge-feishu.git"
+  },
   "scripts": {
     "start": "node src/app/main.mjs",
     "check": "find src -name '*.mjs' -exec node --check {} +",
