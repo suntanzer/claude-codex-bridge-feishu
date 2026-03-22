@@ -292,6 +292,13 @@ async function main() {
   process.on('SIGTERM', () => void shutdown('SIGTERM'));
   process.on('SIGINT', () => void shutdown('SIGINT'));
 
+  process.on('uncaughtException', (error) => {
+    logger.error(`uncaught exception (kept alive): ${error?.stack || error}`);
+  });
+  process.on('unhandledRejection', (reason) => {
+    logger.error(`unhandled rejection (kept alive): ${reason?.stack || reason}`);
+  });
+
   logger.info(`callback URL: ${callbackUrl || '(local only)'}`);
 }
 
