@@ -1,0 +1,17 @@
+{
+  "name": "claude-codex-bridge-feishu",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Feishu bridge control plane for Claude, Codex, and compatible CLI/SDK runners",
+  "scripts": {
+    "start": "node src/app/main.mjs",
+    "check": "find src -name '*.mjs' -exec node --check {} +",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.76"
+  }
+}

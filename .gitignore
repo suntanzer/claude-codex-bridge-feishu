@@ -1,0 +1,9 @@
+node_modules/
+data/
+.codex/
+.claude/
+instances/*.env
+!instances/*.env.example
+*.log
+*.bak
+*.bak-*
