@@ -16,9 +16,10 @@ export function createOpsHandler({
   postMessage,
   postApprovalPrompt,
 }) {
-  return async function handleCommand({ channelId, rootId, threadKey, approvalScopeKey, command }) {
+  return async function handleCommand({ channelId, rootId, threadKey, approvalScopeKey, command, postMessage: postOverride }) {
+    const post = postOverride || postMessage;
     if (command.command === 'help') {
-      await postMessage(
+      await post(
         channelId,
         rootId,
         [
@@ -35,7 +36,7 @@ export function createOpsHandler({
     }
 
     if (command.command === 'status') {
-      await postMessage(
+      await post(
         channelId,
         rootId,
         renderStatus({
@@ -52,14 +53,14 @@ export function createOpsHandler({
     }
 
     if (command.command === 'queue') {
-      await postMessage(channelId, rootId, renderQueue({ queue, runnerKey }));
+      await post(channelId, rootId, renderQueue({ queue, runnerKey }));
       return true;
     }
 
     if (command.command === 'current') {
       const activeRequest = getActiveRequest();
       const current = activeRequest ? store.getRequest(activeRequest.requestId) : null;
-      await postMessage(channelId, rootId, renderCurrent({ request: current }));
+      await post(channelId, rootId, renderCurrent({ request: current }));
       return true;
     }
 
@@ -76,13 +77,13 @@ export function createOpsHandler({
         callbackUrl,
         reconcileSummary,
       });
-      await postMessage(channelId, rootId, renderDoctorReport(doctorState));
+      await post(channelId, rootId, renderDoctorReport(doctorState));
       return true;
     }
 
     if (command.command === 'cancel') {
       const cancelled = await runner.cancel();
-      await postMessage(channelId, rootId, cancelled ? 'Cancel requested.' : 'No active runner task to cancel.');
+      await post(channelId, rootId, cancelled ? 'Cancel requested.' : 'No active runner task to cancel.');
       return true;
     }
 
@@ -92,11 +93,11 @@ export function createOpsHandler({
         approvalService.findByThread(threadKey) ||
         approvalService.findByChannel(channelId);
       if (!approval) {
-        await postMessage(channelId, rootId, 'No pending approval found for this scope.');
+        await post(channelId, rootId, 'No pending approval found for this scope.');
         return true;
       }
       await postApprovalPrompt(approval);
-      await postMessage(channelId, rootId, 'Reposted the pending approval prompt.');
+      await post(channelId, rootId, 'Reposted the pending approval prompt.');
       return true;
     }
 

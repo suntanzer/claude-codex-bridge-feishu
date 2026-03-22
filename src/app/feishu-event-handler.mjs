@@ -26,6 +26,7 @@ export function createFeishuEventHandler({
   enqueueRequest,
   postMessage,
   buildIncomingPrompt,
+  feishu,
 }) {
   function extractCardActionValue(event) {
     const action = event?.action || {};
@@ -174,6 +175,41 @@ export function createFeishuEventHandler({
     };
   }
 
+  async function onBotMenuEvent(event) {
+    const eventKey = String(event?.event_key || '').trim();
+    if (!eventKey) return;
+    const openId = String(
+      event?.operator?.operator_id?.open_id
+      || event?.operator?.open_id
+      || '',
+    ).trim();
+    if (!openId) return;
+
+    const userPost = async (_channelId, _rootId, text) => {
+      const msg = String(text ?? '').trim();
+      if (msg) {
+        await feishu.sendPostMessageToUser({ openId, text: msg });
+      }
+    };
+
+    const command = { command: eventKey, args: [], rawArgs: '' };
+    try {
+      const handled = await handleCommand({
+        channelId: '',
+        rootId: '',
+        threadKey: '',
+        approvalScopeKey: '',
+        command,
+        postMessage: userPost,
+      });
+      if (!handled) {
+        await feishu.sendTextMessageToUser({ openId, text: `Unknown menu action: ${eventKey}` });
+      }
+    } catch (err) {
+      await feishu.sendTextMessageToUser({ openId, text: `Menu action failed: ${String(err?.message || err)}` });
+    }
+  }
+
   async function onP2pEnteredEvent(event) {
     if (!config.feishuSendWelcomeOnP2pEnter) return;
     const chatId = String(event?.chat_id || '').trim();
@@ -197,6 +233,11 @@ export function createFeishuEventHandler({
 
     if (eventType === 'im.message.receive_v1') {
       await onMessageEvent(payload.event);
+      return { code: 0, msg: 'ok' };
+    }
+
+    if (eventType === 'application.bot.menu_v6') {
+      await onBotMenuEvent(payload.event);
       return { code: 0, msg: 'ok' };
     }
 
