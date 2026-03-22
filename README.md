@@ -148,20 +148,25 @@ cp .env.example instances/codex.env    # Codex runner
 
 ### Approval Behavior
 
-When the runner requests permission to execute a tool (e.g. Bash command, file write):
+AI coding agents can execute shell commands and modify files. When running unattended through a chat bridge, every state-changing tool call is a potential risk. The bridge implements a **three-layer approval architecture** that auto-approves safe reads, catches dangerous writes, and handles the gray area in between:
 
-1. **Rule-based auto-approval** — clearly readonly Bash commands (e.g. `ls`, `cat`, `git status`) are auto-approved
-2. **Gemini classifier** (optional) — uncertain commands can be classified by Gemini as readonly; disabled by default
-3. **Manual approval** — everything else shows an interactive card in Feishu with Approve / Reject / Skip buttons
+1. **Layer 1 — Rule engine** (`claude-bash-readonly.mjs`): deterministic pattern matching. Known-safe commands (`ls`, `cat`, `git log`, `grep`, etc.) are auto-approved immediately. Known-dangerous commands (`rm`, `git push`, `systemctl restart`, output redirects, etc.) go straight to human review. Pipeline commands are split and each segment is checked independently; SSH remote commands are recursively classified.
+2. **Layer 2 — Gemini LLM classifier** (`gemini-readonly.mjs`, optional, off by default): for commands the rule engine cannot decide, a fast/cheap external model (Gemini Flash Lite) gives a second opinion. A separate model is used instead of Claude itself to avoid the agent judging its own actions. Only auto-approves when confidence meets the threshold (default: 100%, most conservative). **Never auto-approves on error** — any failure falls through to human review.
+3. **Layer 3 — Human approval via Feishu**: an interactive card with Approve / Reject / Skip buttons, plus a text fallback (`1`/`2`/`3` or `confirm`/`skip`/`revise`). 10-minute timeout; any team member can respond.
 
-The Gemini classifier is disabled by default. Enable it with:
+**Claude SDK vs Codex — two different mechanisms:**
+
+- **Claude SDK** has a native `canUseTool` callback. The SDK pauses, the bridge classifies through the three layers, and returns the decision. Clean and API-supported.
+- **Codex** has no permission callback API. The bridge solves this by **injecting a checkpoint protocol into the system prompt**: Codex is taught to output a structured "Checkpoint" block before any state-changing action. The bridge detects this pattern in the stdout event stream, posts an approval card in Feishu, and feeds the human's decision back via `codex exec resume` as the next user prompt. This is effectively a prompt-based approval protocol — version-independent, richer than stdin yes/no, and works without relying on undocumented internal APIs.
+
+Enable the Gemini classifier with:
 ```env
 BRIDGE_CLAUDE_GEMINI_READONLY_ENABLED=true
 BRIDGE_CLAUDE_GEMINI_API_KEY=your-gemini-api-key
 BRIDGE_CLAUDE_GEMINI_READONLY_THRESHOLD=100
 ```
 
-A threshold of `100` means only approve if Gemini returns 100% confidence it is readonly (most conservative).
+For the full design rationale, data flow diagrams, rule lists, and trade-off analysis, see **[docs/APPROVAL_DESIGN.md](docs/APPROVAL_DESIGN.md)**.
 
 ### Operational Commands
 
@@ -367,20 +372,25 @@ cp .env.example instances/codex.env    # Codex runner
 
 ### 审批机制
 
-当 Runner 请求执行工具（如 Bash 命令、文件写入）时：
+AI 编程 Agent 能执行 shell 命令和修改文件。通过聊天 Bridge 无人值守运行时，每个改变状态的工具调用都是潜在风险。Bridge 实现了**三层审批架构**，自动放行安全读取，拦截危险写入，处理中间的灰色地带：
 
-1. **规则自动审批** —— 明确只读的 Bash 命令（如 `ls`、`cat`、`git status`）自动通过
-2. **Gemini 分类器**（可选）—— 不确定的命令可由 Gemini 判断是否只读；默认关闭
-3. **人工审批** —— 其他情况在飞书中显示交互卡片，带有 批准 / 拒绝 / 跳过 按钮
+1. **第一层 —— 规则引擎**（`claude-bash-readonly.mjs`）：确定性模式匹配。已知安全命令（`ls`、`cat`、`git log`、`grep` 等）立即自动放行。已知危险命令（`rm`、`git push`、`systemctl restart`、输出重定向等）直接进入人工审批。管道命令逐段分割检查；SSH 远程命令递归分类。
+2. **第二层 —— Gemini LLM 分类器**（`gemini-readonly.mjs`，可选，默认关闭）：规则引擎无法判断的命令，由快速/低成本的外部模型（Gemini Flash Lite）给第二意见。使用独立模型而非 Claude 自身，避免 Agent 判断自己的行为。仅在置信度达到阈值时自动放行（默认 100%，最保守）。**出错时绝不自动放行** —— 任何失败都下沉到人工审批。
+3. **第三层 —— 飞书人工审批**：交互卡片带 批准/拒绝/跳过 按钮，加文字回复兜底（`1`/`2`/`3` 或 `confirm`/`skip`/`revise`）。10 分钟超时；任何团队成员可响应。
 
-Gemini 分类器默认关闭，启用方式：
+**Claude SDK 与 Codex —— 两种不同机制：**
+
+- **Claude SDK** 有原生 `canUseTool` 回调。SDK 暂停，Bridge 通过三层分类后返回决策。干净且有 API 支持。
+- **Codex** 没有权限回调 API。Bridge 通过**在 system prompt 中注入 checkpoint 协议**解决：教 Codex 在任何状态变更操作前输出结构化的 "Checkpoint" 块。Bridge 从 stdout 事件流中检测此模式，在飞书发送审批卡片，人工决策后通过 `codex exec resume` 作为下一轮 prompt 传回。这是一个基于 prompt 的审批协议——跨版本通用，比 stdin 的 yes/no 语义更丰富，且不依赖未文档化的内部 API。
+
+启用 Gemini 分类器：
 ```env
 BRIDGE_CLAUDE_GEMINI_READONLY_ENABLED=true
 BRIDGE_CLAUDE_GEMINI_API_KEY=your-gemini-api-key
 BRIDGE_CLAUDE_GEMINI_READONLY_THRESHOLD=100
 ```
 
-`BRIDGE_CLAUDE_GEMINI_READONLY_THRESHOLD=100` 表示仅当 Gemini 返回 100% 只读置信度时才自动通过（最保守设置）。
+完整的设计理由、数据流图、规则列表和折中分析，见 **[docs/APPROVAL_DESIGN.md](docs/APPROVAL_DESIGN.md)**。
 
 ### 运维命令
 

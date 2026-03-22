@@ -7,3 +7,5 @@ instances/*.env
 *.log
 *.bak
 *.bak-*
+docs/AUDIT_FINDINGS.md
+docs/CLAUDE_AUDIT_SUMMARY.md
